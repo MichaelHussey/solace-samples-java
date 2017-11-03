@@ -21,68 +21,70 @@ package com.solace.samples;
 
 import com.solacesystems.jcsmp.JCSMPException;
 import com.solacesystems.jcsmp.JCSMPFactory;
-import com.solacesystems.jcsmp.JCSMPProperties;
-import com.solacesystems.jcsmp.JCSMPSession;
 import com.solacesystems.jcsmp.JCSMPStreamingPublishEventHandler;
 import com.solacesystems.jcsmp.TextMessage;
-import com.solacesystems.jcsmp.Topic;
-import com.solacesystems.jcsmp.XMLMessageProducer;
 
-public class TopicPublisher {
+public class TopicPublisher extends BaseClass {
 
-    public static void main(String... args) throws JCSMPException {
 
-        // Check command line arguments
-        if (args.length != 3 || args[1].split("@").length != 2) {
-            System.out.println("Usage: TopicPublisher <host:port> <client-username@message-vpn> <client-password>");
-            System.out.println();
-            System.exit(-1);
-        }
-        if (args[1].split("@")[0].isEmpty()) {
-            System.out.println("No client-username entered");
-            System.out.println();
-            System.exit(-1);
-        }
-        if (args[1].split("@")[1].isEmpty()) {
-            System.out.println("No message-vpn entered");
-            System.out.println();
-            System.exit(-1);
-        }
-
-        System.out.println("TopicPublisher initializing...");
-
-        // Create a JCSMP Session
-        final JCSMPProperties properties = new JCSMPProperties();
-        properties.setProperty(JCSMPProperties.HOST, args[0]);     // host:port
-        properties.setProperty(JCSMPProperties.USERNAME, args[1].split("@")[0]); // client-username
-        properties.setProperty(JCSMPProperties.PASSWORD, args[2]); // client-password
-        properties.setProperty(JCSMPProperties.VPN_NAME,  args[1].split("@")[1]); // message-vpn
-        final JCSMPSession session =  JCSMPFactory.onlyInstance().createSession(properties);
-
-        session.connect();
-
-        final Topic topic = JCSMPFactory.onlyInstance().createTopic("tutorial/topic");
-
+	public void subscribeToEvents() throws JCSMPException{
         /** Anonymous inner-class for handling publishing events */
-        XMLMessageProducer prod = session.getMessageProducer(new JCSMPStreamingPublishEventHandler() {
-            @Override
+        prod = session.getMessageProducer(new JCSMPStreamingPublishEventHandler() {
             public void responseReceived(String messageID) {
-                System.out.println("Producer received response for msg: " + messageID);
+                System.out.println("ACK received for msg: " + messageID);
             }
-            @Override
             public void handleError(String messageID, JCSMPException e, long timestamp) {
-                System.out.printf("Producer received error for msg: %s@%s - %s%n",
-                        messageID,timestamp,e);
+                System.out.printf("Producer received error for msgId: %s%n%s%n",
+                        messageID,e.getMessage());
             }
         });
         // Publish-only session is now hooked up and running!
+		
+	}
+	
+	public void publish() throws JCSMPException {
+		boolean once = true;
+		TextMessage msg = JCSMPFactory.onlyInstance().createMessage(TextMessage.class);
+		while(continuous || once){
+			System.out.printf("About to send %s messages to topic '%s'...%n",count,topic.getName());
+			startTime = System.nanoTime();
+			for (int i=0; i<count; i++){
+				final String text = startTime+" Hello world! Msg #"+i;
+				msg.setText(text);
+				prod.send(msg,topic);
+			} 
+			once = false;
+			long endTime = System.nanoTime();
+			double delta = (endTime - startTime);
+			long waitT = (long) (1000/rate -delta/1000.0/1000.0	);
+			if (waitT <=  0)
+				waitT = 0;
+			try {
+				//long rate = (long) (count / delta * 1000.0 * 1000.0 * 1000.0);
+				System.out.println("Sent at "+rate+" msgs/sec, now waiting for "+waitT+" ms");
+				Thread.sleep(waitT);
+			} catch (InterruptedException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+		} 
+		System.out.println(count+" Messages sent. Exiting.");
+	}
 
-        TextMessage msg = JCSMPFactory.onlyInstance().createMessage(TextMessage.class);
-        final String text = "Hello world!";
-        msg.setText(text);
-        System.out.printf("Connected. About to send message '%s' to topic '%s'...%n",text,topic.getName());
-        prod.send(msg,topic);
-        System.out.println("Message sent. Exiting.");
-        session.closeSession();
+	
+	public static void main(String... args) throws JCSMPException {
+ 
+        // Check command line arguments
+    	TopicPublisher pub = new TopicPublisher();
+    	pub.parseArgs(args);
+        
+    	pub.connect();
+		
+    	pub.subscribeToEvents();
+    	
+    	pub.publish();
+
+        pub.close();
     }
+
 }

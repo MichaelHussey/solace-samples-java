@@ -23,82 +23,70 @@ import java.util.concurrent.CountDownLatch;
 
 import com.solacesystems.jcsmp.BytesXMLMessage;
 import com.solacesystems.jcsmp.JCSMPException;
-import com.solacesystems.jcsmp.JCSMPFactory;
-import com.solacesystems.jcsmp.JCSMPProperties;
 import com.solacesystems.jcsmp.JCSMPSession;
 import com.solacesystems.jcsmp.TextMessage;
-import com.solacesystems.jcsmp.Topic;
-import com.solacesystems.jcsmp.XMLMessageConsumer;
 import com.solacesystems.jcsmp.XMLMessageListener;
 
-public class TopicSubscriber {
+public class TopicSubscriber extends BaseClass {
 
-    public static void main(String... args) throws JCSMPException {
+	
+	// Listen to Topic and quit after <count> messages
+	public CountDownLatch subscribe() throws JCSMPException {
+        // used for
+        // synchronizing b/w threads
+        final CountDownLatch latch = new CountDownLatch(count); 
 
-        // Check command line arguments
-        if (args.length != 3 || args[1].split("@").length != 2) {
-            System.out.println("Usage: TopicSubscriber <host:port> <client-username@message-vpn> <client-password>");
-            System.out.println();
-            System.exit(-1);
-        }
-        if (args[1].split("@")[0].isEmpty()) {
-            System.out.println("No client-username entered");
-            System.out.println();
-            System.exit(-1);
-        }
-        if (args[1].split("@")[1].isEmpty()) {
-            System.out.println("No message-vpn entered");
-            System.out.println();
-            System.exit(-1);
-        }
-
-        System.out.println("TopicSubscriber initializing...");
-        final JCSMPProperties properties = new JCSMPProperties();
-        properties.setProperty(JCSMPProperties.HOST, args[0]);     // host:port
-        properties.setProperty(JCSMPProperties.USERNAME, args[1].split("@")[0]); // client-username
-        properties.setProperty(JCSMPProperties.PASSWORD, args[2]); // client-password
-        properties.setProperty(JCSMPProperties.VPN_NAME,  args[1].split("@")[1]); // message-vpn
-        final Topic topic = JCSMPFactory.onlyInstance().createTopic("tutorial/topic");
-        final JCSMPSession session = JCSMPFactory.onlyInstance().createSession(properties);
-
-        session.connect();
-
-        final CountDownLatch latch = new CountDownLatch(1); // used for
-                                                            // synchronizing b/w threads
         /** Anonymous inner-class for MessageListener
          *  This demonstrates the async threaded message callback */
-        final XMLMessageConsumer cons = session.getMessageConsumer(new XMLMessageListener() {
-            @Override
+        cons = session.getMessageConsumer(new XMLMessageListener() {
             public void onReceive(BytesXMLMessage msg) {
+            	processedCount++;
+            	if(processedCount == 1)
+            		startTime = System.nanoTime();
                 if (msg instanceof TextMessage) {
-                    System.out.printf("TextMessage received: '%s'%n",
+                    if (debug)
+                    	System.out.printf("TextMessage received: '%s'%n",
                             ((TextMessage)msg).getText());
                 } else {
                     System.out.println("Message received.");
                 }
-                System.out.printf("Message Dump:%n%s%n",msg.dump());
+                if (debug)
+                	System.out.printf("Message Dump:%n%s%n",msg.dump());
                 latch.countDown();  // unblock main thread
             }
-
-            @Override
             public void onException(JCSMPException e) {
                 System.out.printf("Consumer received exception: %s%n",e);
                 latch.countDown();  // unblock main thread
             }
         });
         session.addSubscription(topic);
-        System.out.println("Connected. Awaiting message...");
+        System.out.println("Connected. Awaiting "+ count +" messages...");
         cons.start();
         // Consume-only session is now hooked up and running!
+        return latch;
+		
+	}
 
+    public static void main(String... args) throws JCSMPException {
+
+        // Check command line arguments
+    	TopicSubscriber sub = new TopicSubscriber();
+        sub.parseArgs(args);
+        
+        sub.connect();
+        CountDownLatch latch = sub.subscribe();
         try {
             latch.await(); // block here until message received, and latch will flip
-        } catch (InterruptedException e) {
+            long finishTime = System.nanoTime();
+            double delta = (finishTime - sub.getStartTime()) / 1000.0;
+            System.out.println("Received "+sub.getCount()+" messages in "+delta+"ms");
+       } catch (InterruptedException e) {
             System.out.println("I was awoken while waiting");
         }
         // Close consumer
-        cons.close();
-        System.out.println("Exiting.");
-        session.closeSession();
+        sub.close();
     }
+	private JCSMPSession getSession() {
+		return session;
+	}
 }
