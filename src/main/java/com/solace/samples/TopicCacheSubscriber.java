@@ -69,14 +69,14 @@ public class TopicCacheSubscriber extends BaseClass{
         // Add Cache handling
 		// Requests the most recent message on the topic, using default timeout 10sec
 		CacheSessionProperties props = new CacheSessionProperties(cacheName);
+		CacheSession cacheSession = null;
 		try {
-			CacheSession cacheSession = session.createCacheSession(props);
-						
-			cacheSession.sendCacheRequest(1L, topic, false, CacheLiveDataAction.FULFILL);
-			
+			cacheSession = session.createCacheSession(props);				
+			cacheSession.sendCacheRequest(1L, topic, false, CacheLiveDataAction.FULFILL);			
 		} catch (JCSMPException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
+	        System.out.println("Error enabling cache server interaction "+ e);
+			if(cacheSession != null) 
+				cacheSession.close();
 		}
         
         // Consume-only session is now hooked up and running!
